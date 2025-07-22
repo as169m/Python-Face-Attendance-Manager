@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block content %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance Summary</title>
+    <style>
+        body {
+            background: #f4f4f4;
+            font-family: Arial, sans-serif;
+        }
+
+        .container {
+            width: 95%;
+            max-width: 1200px;
+            margin: 20px auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .filters {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            gap: 10px;
+        }
+
+        .filters input {
+            padding: 5px;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+
+        th {
+            background: #333;
+            color: #fff;
+        }
+
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+
+        tr:hover {
+            background: #f1f1f1;
+        }
+
+        .break-time {
+            font-weight: bold;
+            color: #444;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Attendance Summary</h1>
+
+        <!-- Filter Section -->
+        <div class="filters">
+            <input type="date" id="startDate" value="{{ start_date|default('') }}">
+            <input type="date" id="endDate" value="{{ end_date|default('') }}">
+            <input type="text" id="searchInput" placeholder="Search by name or ID">
+            <button onclick="applyFilters()">Filter</button>
+        </div>
+
+        <!-- Table -->
+        <table id="attendanceTable">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Employee ID</th>
+                    <th>Name</th>
+                    <th>First IN</th>
+                    <th>Last OUT</th>
+                    <th>Total Break Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for day, records in attendance_by_day.items() %}
+                    {% for emp_id, emp_records in records.items() %}
+                        {% set emp_name = emp_records[0].name %}
+                        {% set first_in = emp_records | selectattr("status", "equalto", "IN") | map(attribute="timestamp") | list | first %}
+                        {% set last_out = emp_records | selectattr("status", "equalto", "OUT") | map(attribute="timestamp") | list | last %}
+
+                        {% set total_break = namespace(seconds=0) %}
+                        {% for i in range(1, emp_records|length) %}
+                            {% if emp_records[i-1].status == "OUT" and emp_records[i].status == "IN" %}
+                                {% set diff = (emp_records[i].timestamp - emp_records[i-1].timestamp).total_seconds() %}
+                                {% set total_break.seconds = total_break.seconds + diff %}
+                            {% endif %}
+                        {% endfor %}
+
+                        <tr>
+                            <td>{{ day }}</td>
+                            <td>{{ emp_id }}</td>
+                            <td>{{ emp_name }}</td>
+                            <td>{{ first_in.strftime('%H:%M:%S') if first_in else '-' }}</td>
+                            <td>{{ last_out.strftime('%H:%M:%S') if last_out else '-' }}</td>
+                            <td class="break-time">
+                                {% set hrs = (total_break.seconds // 3600) %}
+                                {% set mins = ((total_break.seconds % 3600) // 60) %}
+                                {{ "%02d:%02d" % (hrs, mins) }} hrs
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        function applyFilters() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            const search = document.getElementById('searchInput').value;
+
+            let url = `/attendance_summary?`;
+            if (startDate) url += `start=${startDate}&`;
+            if (endDate) url += `end=${endDate}&`;
+            if (search) url += `search=${search}&`;
+
+            window.location.href = url.slice(0, -1);
+        }
+
+        // Search within table (client-side for quick filter)
+        document.getElementById('searchInput').addEventListener('keyup', function () {
+            const filter = this.value.toLowerCase();
+            const rows = document.querySelectorAll('#attendanceTable tbody tr');
+            rows.forEach(row => {
+                const text = row.innerText.toLowerCase();
+                row.style.display = text.includes(filter) ? '' : 'none';
+            });
+        });
+    </script>
+</body>
+</html>
+{% endblock %}

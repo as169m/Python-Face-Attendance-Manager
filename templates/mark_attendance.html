@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Mark Attendance{% endblock %}
+
+{% block extra_styles %}
+<style>
+  video, canvas { border: 2px solid #333; border-radius: 8px; max-width: 100%; height: auto; }
+  #status { margin-top: 10px; font-weight: bold; color: green; }
+  .video-container { display: inline-block; position: relative; }
+  #overlay { position: absolute; top: 0; left: 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+  <h2>Face Detection - Mark Attendance</h2>
+  <div class="video-container">
+    <video id="video" width="640" height="480" autoplay muted></video>
+    <canvas id="overlay" width="640" height="480"></canvas>
+  </div>
+  <canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
+  <p id="status">Initializing camera...</p>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/js/face-api.min.js"></script>
+<script>
+  const video = document.getElementById('video');
+  const overlay = document.getElementById('overlay');
+  const canvas = document.getElementById('canvas');
+  const statusEl = document.getElementById('status');
+  const ctxOverlay = overlay.getContext('2d');
+  let isProcessing = false;
+
+  async function loadModels() {
+    try {
+      await faceapi.nets.tinyFaceDetector.loadFromUri('/static/models');
+      await faceapi.nets.faceLandmark68Net.loadFromUri('/static/models');
+      statusEl.innerText = "Models loaded. Starting camera...";
+      startVideo();
+    } catch (error) {
+      console.error("Model loading error:", error);
+      statusEl.innerText = "Error loading models.";
+    }
+  }
+
+  function startVideo() {
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then((stream) => {
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          video.play();
+          statusEl.innerText = "Camera started. Detecting faces...";
+          detectFaces();
+        };
+      })
+      .catch((err) => {
+        console.error("Camera error:", err);
+        statusEl.innerText = "Unable to access camera.";
+      });
+  }
+
+  function captureAndSend() {
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = canvas.toDataURL('image/jpeg', 0.7);
+
+    fetch('/mark_attendance_api', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: imageData })
+    })
+    .then(res => res.json())
+    .then(data => {
+      statusEl.innerText = data.message;
+      setTimeout(() => { isProcessing = false; }, 3000);
+    })
+    .catch(err => {
+      console.error("Error marking attendance:", err);
+      statusEl.innerText = "Error marking attendance.";
+      isProcessing = false;
+    });
+  }
+
+  async function detectFaces() {
+    const displaySize = { width: video.width, height: video.height };
+    faceapi.matchDimensions(overlay, displaySize);
+
+    setInterval(async () => {
+      if (isProcessing) return;
+
+      const detections = await faceapi
+        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks();
+
+      ctxOverlay.clearRect(0, 0, overlay.width, overlay.height);
+
+      if (detections.length > 0) {
+        const resizedDetections = faceapi.resizeResults(detections, displaySize);
+        faceapi.draw.drawDetections(overlay, resizedDetections);
+        faceapi.draw.drawFaceLandmarks(overlay, resizedDetections);
+
+        statusEl.innerText = "Face detected! Marking attendance...";
+        isProcessing = true;
+        captureAndSend();
+      } else {
+        statusEl.innerText = "No face detected. Waiting...";
+      }
+    }, 500);
+  }
+
+  window.addEventListener('DOMContentLoaded', loadModels);
+</script>
+{% endblock %}

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Attendance for {{ emp.name }}{% endblock %}
+
+{% block extra_styles %}
+<style>
+  .attendance-container {
+    max-width: 900px;
+    margin: 20px auto;
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  }
+  .attendance-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+  }
+  .attendance-table th, .attendance-table td {
+    border: 1px solid #ccc;
+    padding: 8px;
+    text-align: center;
+  }
+  .attendance-table th {
+    background: #333;
+    color: #fff;
+  }
+  @media (max-width: 768px) {
+    .attendance-table, .attendance-table thead, .attendance-table tbody, .attendance-table th, .attendance-table td, .attendance-table tr {
+      display: block;
+      width: 100%;
+    }
+    .attendance-table tr {
+      margin-bottom: 10px;
+    }
+    .attendance-table td {
+      text-align: right;
+      padding-left: 50%;
+      position: relative;
+    }
+    .attendance-table td::before {
+      content: attr(data-label);
+      position: absolute;
+      left: 10px;
+      width: 45%;
+      text-align: left;
+      font-weight: bold;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="attendance-container">
+  <h2>Attendance for {{ emp.name }} ({{ emp.employee_id }})</h2>
+
+  <table class="attendance-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>First IN</th>
+        <th>Last OUT</th>
+        <th>Total Hours</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for rec in summary %}
+        <tr>
+          <td data-label="Date">{{ rec.date.strftime('%Y-%m-%d') }}</td>
+          <td data-label="First IN">{{ rec.in_time.strftime('%H:%M:%S') if rec.in_time else '—' }}</td>
+          <td data-label="Last OUT">{{ rec.out_time.strftime('%H:%M:%S') if rec.out_time else '—' }}</td>
+          <td data-label="Total Hours">{{ rec.total_hours }}</td>
+        </tr>
+      {% else %}
+        <tr>
+          <td colspan="4">No attendance records found.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

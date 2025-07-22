@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block extra_styles %}
+<style>
+  .dashboard-container {
+    max-width: 1000px;
+    margin: 20px auto;
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+  }
+  th, td {
+    border: 1px solid #ccc;
+    padding: 8px;
+    text-align: center;
+  }
+  th {
+    background: #333;
+    color: #fff;
+  }
+  h2, h3 {
+    text-align: center;
+    margin-bottom: 15px;
+  }
+  @media (max-width: 768px) {
+    table, thead, tbody, th, td, tr {
+      display: block;
+      width: 100%;
+    }
+    tr {
+      margin-bottom: 10px;
+    }
+    td {
+      text-align: right;
+      padding-left: 50%;
+      position: relative;
+    }
+    td::before {
+      content: attr(data-label);
+      position: absolute;
+      left: 10px;
+      width: 45%;
+      text-align: left;
+      font-weight: bold;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+  <h2>Dashboard</h2>
+
+  <!-- Today's Attendance Summary -->
+  <h3>Today's Attendance Summary</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Employee ID</th>
+        <th>Name</th>
+        <th>IN Count</th>
+        <th>OUT Count</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if today_summary %}
+        {% for emp in today_summary %}
+        <tr>
+          <td data-label="Employee ID">{{ emp.employee_id }}</td>
+          <td data-label="Name">{{ emp.name }}</td>
+          <td data-label="IN Count">{{ emp.in_count }}</td>
+          <td data-label="OUT Count">{{ emp.out_count }}</td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="4">No attendance records for today.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <!-- Live Attendance View -->
+  <h3>Live Attendance</h3>
+  <table id="live-attendance">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Employee ID</th>
+        <th>Name</th>
+        <th>Status (IN/OUT)</th>
+        <th>Timestamp</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td colspan="5">Loading...</td></tr>
+    </tbody>
+  </table>
+
+  <!-- Filter & Attendance Records -->
+  <h3>Attendance Records</h3>
+  <form method="get" action="{{ url_for('dashboard') }}" style="margin-bottom:20px; text-align:center;">
+    <input type="date" name="date" value="{{ date_filter }}">
+    <input type="text" name="name" placeholder="Search Name" value="{{ name_filter }}">
+    <button type="submit">Filter</button>
+  </form>
+
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Employee ID</th>
+        <th>Name</th>
+        <th>Status (IN/OUT)</th>
+        <th>Timestamp</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if records %}
+        {% for record in records %}
+        <tr>
+          <td data-label="ID">{{ record.id }}</td>
+          <td data-label="Employee ID">{{ record.employee_id }}</td>
+          <td data-label="Name">{{ record.name }}</td>
+          <td data-label="Status">{{ record.status }}</td>
+          <td data-label="Timestamp">{{ record.timestamp }}</td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="5">No records found.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+  async function loadLiveAttendance() {
+    try {
+      const res = await fetch("/live_attendance");
+      const data = await res.json();
+      const tbody = document.querySelector("#live-attendance tbody");
+      tbody.innerHTML = "";
+      if (data.length === 0) {
+        tbody.innerHTML = "<tr><td colspan='5'>No attendance yet.</td></tr>";
+        return;
+      }
+      data.forEach(rec => {
+        const row = `
+          <tr>
+            <td data-label="ID">${rec.id}</td>
+            <td data-label="Employee ID">${rec.employee_id}</td>
+            <td data-label="Name">${rec.name}</td>
+            <td data-label="Status">${rec.status}</td>
+            <td data-label="Timestamp">${rec.timestamp}</td>
+          </tr>`;
+        tbody.innerHTML += row;
+      });
+    } catch (err) {
+      console.error("Error loading live attendance:", err);
+    }
+  }
+
+  // Load immediately and refresh every 30 seconds
+  loadLiveAttendance();
+  setInterval(loadLiveAttendance, 30000);
+</script>
+{% endblock %}

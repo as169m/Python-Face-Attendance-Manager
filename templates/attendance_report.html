@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Attendance Report{% endblock %}
+
+{% block extra_styles %}
+<style>
+  .report-container {
+    max-width: 900px;
+    margin: 20px auto;
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  }
+  form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 20px;
+    justify-content: center;
+  }
+  select, input[type="date"], button {
+    padding: 6px 10px;
+    font-size: 1rem;
+  }
+  .attendance-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .attendance-table th, .attendance-table td {
+    border: 1px solid #ccc;
+    padding: 8px;
+    text-align: center;
+  }
+  .attendance-table th {
+    background: #333;
+    color: #fff;
+  }
+  @media (max-width: 768px) {
+    form {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .attendance-table, .attendance-table thead, .attendance-table tbody, .attendance-table th, .attendance-table td, .attendance-table tr {
+      display: block;
+      width: 100%;
+    }
+    .attendance-table tr {
+      margin-bottom: 10px;
+    }
+    .attendance-table td {
+      text-align: right;
+      padding-left: 50%;
+      position: relative;
+    }
+    .attendance-table td::before {
+      content: attr(data-label);
+      position: absolute;
+      left: 10px;
+      width: 45%;
+      text-align: left;
+      font-weight: bold;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="report-container">
+  <h2 style="text-align:center;">Attendance Report</h2>
+
+  <form method="get" action="{{ url_for('attendance_report') }}">
+    <input type="date" name="date" value="{{ selected_date }}">
+    <select name="employee_id">
+      <option value="">All Employees</option>
+      {% for emp in employees %}
+        <option value="{{ emp.id }}" {% if selected_emp_id|int == emp.id %}selected{% endif %}>
+          {{ emp.employee_id }} - {{ emp.name }}
+        </option>
+      {% endfor %}
+    </select>
+    <button type="submit">Filter</button>
+    <button type="submit" name="export" value="1">Export CSV</button>
+  </form>
+
+  <table class="attendance-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Employee ID</th>
+        <th>Name</th>
+        <th>Status (IN/OUT)</th>
+        <th>Timestamp</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if records %}
+        {% for record in records %}
+        <tr>
+          <td data-label="ID">{{ record.id }}</td>
+          <td data-label="Employee ID">{{ record.employee_id }}</td>
+          <td data-label="Name">{{ record.name }}</td>
+          <td data-label="Status">{{ record.status }}</td>
+          <td data-label="Timestamp">{{ record.timestamp }}</td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="5">No records found.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

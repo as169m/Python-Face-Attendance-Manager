@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block content %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mark Attendance</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #f4f4f4;
+            font-family: Arial, sans-serif;
+        }
+
+        #container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: calc(100vh - 60px); /* Adjust for menu height */
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        #status {
+            margin-bottom: 10px;
+            font-weight: bold;
+            font-size: 20px;
+            color: #222;
+            text-align: center;
+        }
+
+        #lastMarked {
+            margin-bottom: 15px;
+            font-size: 16px;
+            color: #555;
+            text-align: center;
+        }
+
+        #videoWrapper {
+            position: relative;
+            width: 100%;
+            max-width: 100%;
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #video, #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        @media (max-width: 768px) {
+            #status {
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="status">Initializing...</div>
+        <div id="lastMarked">Last marked: --</div>
+        <div id="videoWrapper">
+            <video id="video" autoplay muted playsinline></video>
+            <canvas id="overlay"></canvas>
+        </div>
+    </div>
+
+    <script src="/static/js/face-api.min.js"></script>
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('overlay');
+        const statusEl = document.getElementById('status');
+        const lastMarkedEl = document.getElementById('lastMarked');
+        let isProcessing = false;
+        let labeledDescriptors = [];
+        let faceMatcher;
+
+        Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri('/static/models'),
+            faceapi.nets.faceLandmark68Net.loadFromUri('/static/models'),
+            faceapi.nets.faceRecognitionNet.loadFromUri('/static/models')
+        ]).then(init);
+
+        async function init() {
+            statusEl.textContent = 'Loading known faces...';
+            await fetch('/generate_embeddings', { method: 'POST' });
+            await loadKnownFaces();
+
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+                .then(stream => {
+                    video.srcObject = stream;
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        recognizeFaces();
+                    };
+                })
+                .catch(err => statusEl.textContent = 'Camera Error: ' + err);
+        }
+
+        async function loadKnownFaces() {
+            const res = await fetch('/static/known_faces.json');
+            const data = await res.json();
+            labeledDescriptors = data.map(person =>
+                new faceapi.LabeledFaceDescriptors(
+                    person.name,
+                    [new Float32Array(person.descriptor)]
+                )
+            );
+            faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.5);
+            statusEl.textContent = 'Ready! Looking for faces...';
+        }
+
+        function captureAndSend(recognizedEmployee) {
+            if (!recognizedEmployee || !recognizedEmployee.id || !recognizedEmployee.name) {
+                statusEl.innerText = "No recognized face.";
+                isProcessing = false;
+                return;
+            }
+
+            fetch('/api/mark_attendance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    employee_id: recognizedEmployee.id,
+                    employee_name: recognizedEmployee.name
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                statusEl.innerText = data.message;
+                alert(data.message)
+                fetchLastAttendance(recognizedEmployee.id);
+                setTimeout(() => { isProcessing = false; }, 3000);
+            })
+            .catch(err => {
+                statusEl.innerText = "Error marking attendance.";
+                isProcessing = false;
+            });
+        }
+
+        function fetchLastAttendance(employeeId) {
+            fetch(`/last_attendance/${employeeId}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status && data.timestamp) {
+                        lastMarkedEl.innerText = `Last marked: ${data.name} ${data.status} at ${data.timestamp}`;
+                    } else {
+                        lastMarkedEl.innerText = "Last marked: No record";
+                    }
+                })
+                .catch(err => {
+                    lastMarkedEl.innerText = "Error fetching last attendance.";
+                });
+        }
+
+        async function recognizeFaces() {
+            const displaySize = { width: video.videoWidth, height: video.videoHeight };
+            faceapi.matchDimensions(canvas, displaySize);
+
+            setInterval(async () => {
+                const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks()
+                    .withFaceDescriptors();
+
+                const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                if (resizedDetections.length > 1) {
+                    statusEl.textContent = "Multiple faces detected! Please stay alone.";
+                    return;
+                }
+
+                let recognizedFace = null;
+
+                resizedDetections.forEach(d => {
+                    const bestMatch = faceMatcher.findBestMatch(d.descriptor);
+                    const box = d.detection.box;
+                    const drawBox = new faceapi.draw.DrawBox(box, { label: bestMatch.toString() });
+                    drawBox.draw(canvas);
+
+                    if (bestMatch.label !== "unknown") {
+                        const [empId, empName] = bestMatch.label.split("_");
+                        recognizedFace = { id: empId, name: empName };
+                    }
+                });
+
+                if (recognizedFace) {
+                    statusEl.textContent = `Detected: ${recognizedFace.name}! Marking attendance...`;
+                    if (!isProcessing) {
+                        isProcessing = true;
+                        captureAndSend(recognizedFace);
+                    }
+                } else {
+                    statusEl.textContent = 'No face detected';
+                }
+            }, 1000);
+        }
+    </script>
+</body>
+</html>
+{% endblock %}
